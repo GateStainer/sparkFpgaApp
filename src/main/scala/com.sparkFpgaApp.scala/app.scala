@@ -1,27 +1,44 @@
 package com.sparkFpgaApp.scala
 
 import org.apache.spark.{SparkConf, SparkContext}
+import org.json.JSONObject
 
-object SparkWordCount {
+object app {
   def main(args: Array[String]) {
     // create Spark context with Spark configuration
     val sc = new SparkContext(new SparkConf().setAppName("Spark Count"))
+    // Read in text file, each line is a json string
+    val messages = sc.textFile("/home/puxi/Desktop/spark_data/")
 
-    // get threshold
-    val threshold = args(1).toInt
+    //Parse the String as JSON
+    val data = messages.map(parseJson(_))
 
-    // read in text file and split each document into words
-    val tokenized = sc.textFile(args(0)).flatMap(_.split(" "))
+    //Filter the records if event type is "view"
+    val filteredOnView = data.filter(_(4).equals("view"))
 
-    // count the occurrence of each word
-    val wordCounts = tokenized.map((_, 1)).reduceByKey(_ + _)
+    //project the event, basically filter the fields.
+    val projected = filteredOnView.map(eventProjection(_))
 
-    // filter out words with fewer than threshold occurrences
-    val filtered = wordCounts.filter(_._2 >= threshold)
+    projected.saveAsTextFile("/home/puxi/Desktop/spark_result")
 
-    // count characters
-    val charCounts = filtered.flatMap(_._1.toCharArray).map((_, 1)).reduceByKey(_ + _)
-
-    System.out.println(charCounts.collect().mkString(", "))
   }
+
+  def parseJson(jsonString: String): Array[String] = {
+    val parser = new JSONObject(jsonString)
+    Array(
+      parser.getString("user_id"),
+      parser.getString("page_id"),
+      parser.getString("ad_id"),
+      parser.getString("ad_type"),
+      parser.getString("event_type"),
+      parser.getString("event_time"),
+      parser.getString("ip_address"))
+  }
+
+  def eventProjection(event: Array[String]): String = {
+    Array(
+      event(2), //ad_id
+      event(5)).mkString(" ") //event_time
+  }
+
 }
